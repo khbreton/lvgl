@@ -2222,11 +2222,24 @@ skip:
 
 static void _lv_wayland_handle_input(void)
 {
-    int prepare_read = wl_display_prepare_read(application.display);
-    while(prepare_read != 0) {
+    struct pollfd pfd = { .fd = wl_display_get_fd(application.display), .events = POLLIN };
+
+    /* Flush any outgoing requests before checking for incoming events */
+    wl_display_flush(application.display);
+
+    /* Non-blocking poll: skip read if no data is available on the socket.
+     * wl_display_read_events() blocks indefinitely when the socket is empty,
+     * which deadlocks on the first call before any surface has been committed. */
+    if(poll(&pfd, 1, 0) <= 0) {
         wl_display_dispatch_pending(application.display);
+        return;
     }
 
+    /* Drain any already-queued events before reading new ones */
+    int prepare_read;
+    while((prepare_read = wl_display_prepare_read(application.display)) != 0) {
+        wl_display_dispatch_pending(application.display);
+    }
     wl_display_read_events(application.display);
     wl_display_dispatch_pending(application.display);
 }
