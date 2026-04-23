@@ -1119,6 +1119,11 @@ static void xdg_surface_handle_configure(void * data, struct xdg_surface * xdg_s
     xdg_surface_ack_configure(xdg_surface, serial);
 
     if(window->body->surface_configured == false) {
+        /* Mark configured before draw_window so _lv_wayland_flush (called via
+         * lv_refr_now inside draw_window) does not see surface_configured==false
+         * and skip the initial render with a zero-sized buffer. */
+        window->body->surface_configured = true;
+
         /* This branch is executed at launch */
         if(window->resize_pending == false) {
             /* Use the size passed to the create_window function */
@@ -1135,7 +1140,6 @@ static void xdg_surface_handle_configure(void * data, struct xdg_surface * xdg_s
             window->resize_pending = false;
         }
     }
-    window->body->surface_configured = true;
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -2146,6 +2150,12 @@ static void _lv_wayland_flush(lv_display_t * disp, const lv_area_t * area, unsig
     /* If window has been / is being closed, or is not visible, skip flush */
     if(window->closed || window->shall_close) {
         goto skip;
+    }
+    /* Surface not yet configured: release LVGL immediately so it does not stall.
+     * draw_window→lv_refr_now will render correctly once the configure arrives. */
+    else if(!window->body->surface_configured) {
+        lv_display_flush_ready(disp);
+        return;
     }
     /* Skip if the area is out the screen */
     else if((area->x2 < 0) || (area->y2 < 0) || (area->x1 > hres - 1) || (area->y1 > vres - 1)) {
