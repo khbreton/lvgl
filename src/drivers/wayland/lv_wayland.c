@@ -1078,6 +1078,10 @@ static void draw_window(struct window * window, uint32_t width, uint32_t height)
 #endif
     }
 
+    /* Force a full repaint: lv_timer_handler may have already rendered (and
+     * cleared dirty flags) before surface_configured became true, so nothing
+     * would be dirty here without this explicit invalidation. */
+    lv_obj_invalidate(lv_display_get_screen_active(window->lv_disp));
     lv_refr_now(window->lv_disp);
 
 }
@@ -1139,6 +1143,12 @@ static void xdg_surface_handle_configure(void * data, struct xdg_surface * xdg_s
             window->height = window->resize_height;
             window->resize_pending = false;
         }
+    }
+    else {
+        /* Compositor sent a follow-up configure (state confirmation after the first
+         * commit). XDG shell requires a wl_surface_commit after every ack_configure.
+         * Invalidate so LVGL's normal render path produces the required commit. */
+        lv_obj_invalidate(lv_display_get_screen_active(window->lv_disp));
     }
 }
 
